@@ -1,14 +1,13 @@
 import os
 import json
-from flask import Flask, render_template, jsonify
+from flask import Flask
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from collections import Counter
 
 # --- CONFIGURAÇÃO ---
-app = Flask(__name__, template_folder='templates' )
+app = Flask(__name__)
 
-# Função de autenticação (sem alterações)
+# Função para autenticar (a mesma de antes, sem alterações)
 def autenticar_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
              "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
@@ -18,62 +17,39 @@ def autenticar_google_sheets():
     client = gspread.authorize(creds)
     return client
 
-# --- ROTAS DA APLICAÇÃO ---
-
-@app.route("/")
-def dashboard():
-    return render_template('index.html')
-
-@app.route("/api/dados")
-def api_dados():
+# --- ROTA: RELATÓRIO DO CLIENTE ---
+@app.route("/cliente/<codigo_cliente>")
+def relatorio_cliente(codigo_cliente):
     try:
         client = autenticar_google_sheets()
         sheet = client.open("CONTROLE CENTRAL").sheet1
+        celula = sheet.find(codigo_cliente, in_column=1)
+
+        if celula is None:
+            return f"<h1>Cliente com código {codigo_cliente} não encontrado.</h1>"
+
+        linha_dados = sheet.row_values(celula.row)
         
-        # Pega todos os registros, o gspread já transforma os cabeçalhos em chaves
-        todos_os_dados_brutos = sheet.get_all_records()
+        razao_social = linha_dados[1]
+        status = linha_dados[2]
+        cnpj = linha_dados[4]
 
-        # --- NOVO: Limpeza e Padronização dos Dados ---
-        # Cria uma nova lista de dados com chaves limpas (sem espaços e em maiúsculas)
-        todos_os_dados = []
-        for linha_bruta in todos_os_dados_brutos:
-            linha_limpa = {str(k).strip().upper(): v for k, v in linha_bruta.items()}
-            todos_os_dados.append(linha_limpa)
-        # -------------------------------------------
-
-        # --- Processa os dados para os KPIs ---
-        total_clientes = len(todos_os_dados)
-        
-        # Agora o código procura pelas chaves padronizadas (sempre em maiúsculas)
-        contador_status = Counter(d.get('STATUS', 'N/A') for d in todos_os_dados)
-        contador_regime = Counter(d.get('REGIME TRIBUTÁRIO', 'N/A') for d in todos_os_dados)
-
-        # --- Formata os dados para a tabela ---
-        clientes_formatados = []
-        for linha in todos_os_dados:
-            clientes_formatados.append({
-                "codigo": linha.get('CÓDIGO', ''),
-                "razao_social": linha.get('RAZÃO SOCIAL', ''),
-                "status": linha.get('STATUS', ''),
-                "regime": linha.get('REGIME TRIBUTÁRIO', ''),
-                "segmento": linha.get('SEGMENTO', '')
-            })
-        
-        pacote_final = {
-            "kpis": {
-                "total_clientes": total_clientes,
-                "status": dict(contador_status),
-                "regime": dict(contador_regime)
-            },
-            "clientes": clientes_formatados
-        }
-
-        return jsonify(pacote_final)
+        html_relatorio = f"""
+        <h1>Relatório do Cliente</h1>
+        <p><strong>Código:</strong> {codigo_cliente}</p>
+        <p><strong>Razão Social:</strong> {razao_social}</p>
+        <p><strong>CNPJ:</strong> {cnpj}</p>
+        <p><strong>Status:</strong> {status}</p>
+        """
+        return html_relatorio
 
     except Exception as e:
-        # Retorna um erro claro em JSON se algo der errado
-        # Isso ajuda a diagnosticar problemas futuros
-        return jsonify({"erro": f"Ocorreu uma exceção no servidor: {str(e)}"}), 500
+        return f"<h1>Ocorreu um erro:</h1><p>{e}</p>"
+
+# Rota principal para dar uma instrução
+@app.route("/")
+def index():
+    return "<h1>Serviço de Relatórios Ativo</h1><p>Para ver um relatório, acesse na URL: /cliente/SEU_CODIGO</p>"
 
 # --- INICIA O SERVIDOR ---
 if __name__ == "__main__":
