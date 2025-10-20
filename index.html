@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Soalhe Contabilidade</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #f4f4f9; color: #333; }
+        .header { background-color: #1a1a1a; color: white; padding: 20px; text-align: center; }
+        .header img { max-width: 150px; margin-bottom: 10px; }
+        .container { padding: 20px; }
+        h1, h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .kpi-card { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; }
+        .kpi-card h3 { margin-top: 0; font-size: 1em; color: #555; }
+        .kpi-card p { font-size: 2.5em; font-weight: bold; margin: 0; color: #0056b3; }
+        #tabela-container { max-height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; border-bottom: 1px solid #ddd; text-align: left; }
+        thead th { background-color: #007bff; color: white; position: sticky; top: 0; z-index: 10; }
+        tbody tr:nth-of-type(even) { background-color: #f9f9f9; }
+        tbody tr:hover { background-color: #f1f1f1; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <!-- Adicionando o logo diretamente no código -->
+        <img src="https://i.ibb.co/L84TqY5/logo-soalhe.png" alt="Logo Soalhe Contabilidade">
+        <h1>Dashboard Gerencial de Clientes</h1>
+    </div>
+
+    <div class="container">
+        <h2>Indicadores Chave</h2>
+        <div class="kpis">
+            <div class="kpi-card"><h3>Total Clientes</h3><p id="total-clientes">...</p></div>
+            <div class="kpi-card"><h3>Ativos</h3><p id="total-ativos">...</p></div>
+            <div class="kpi-card"><h3>Inativos</h3><p id="total-inativos">...</p></div>
+        </div>
+
+        <h2>Regime Tributário</h2>
+        <div class="kpis">
+            <div class="kpi-card"><h3>Simples Nacional</h3><p id="regime-simples">...</p></div>
+            <div class="kpi-card"><h3>Lucro Presumido</h3><p id="regime-presumido">...</p></div>
+            <div class="kpi-card"><h3>Lucro Real</h3><p id="regime-real">...</p></div>
+            <div class="kpi-card"><h3>MEI</h3><p id="regime-mei">...</p></div>
+            <div class="kpi-card"><h3>Desenquadrada</h3><p id="regime-desenquadrada">...</p></div>
+            <div class="kpi-card"><h3>Doméstica</h3><p id="regime-domestica">...</p></div>
+        </div>
+
+        <h2>Lista Completa de Clientes</h2>
+        <div id="tabela-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Razão Social</th>
+                        <th>Status</th>
+                        <th>Regime Tributário</th>
+                        <th>Segmento</th>
+                    </tr>
+                </thead>
+                <tbody id="corpo-tabela"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function carregarDados( ) {
+            document.getElementById('corpo-tabela').innerHTML = '<tr><td colspan="5" style="text-align:center;">Carregando dados...</td></tr>';
+            
+            try {
+                const response = await fetch('/api/dados');
+                const data = await response.json();
+
+                // Preenche KPIs de Status
+                document.getElementById('total-clientes').innerText = data.kpis.total_clientes;
+                document.getElementById('total-ativos').innerText = data.kpis.status['Ativo'] || 0;
+                document.getElementById('total-inativos').innerText = data.kpis.status['Inativo'] || 0;
+
+                // Preenche KPIs de Regime
+                document.getElementById('regime-simples').innerText = data.kpis.regime['SIMPLES NACIONAL'] || 0;
+                document.getElementById('regime-presumido').innerText = data.kpis.regime['LUCRO PRESUMIDO'] || 0;
+                document.getElementById('regime-real').innerText = data.kpis.regime['LUCRO REAL'] || 0;
+                document.getElementById('regime-mei').innerText = data.kpis.regime['MEI'] || 0;
+                document.getElementById('regime-desenquadrada').innerText = data.kpis.regime['DESENQUADRADA'] || 0;
+                document.getElementById('regime-domestica').innerText = data.kpis.regime['DOMESTICA'] || 0;
+
+                // Preenche a tabela
+                const corpoTabela = document.getElementById('corpo-tabela');
+                corpoTabela.innerHTML = '';
+                if (data.clientes.length === 0) {
+                    corpoTabela.innerHTML = '<tr><td colspan="5" style="text-align:center;">Nenhum cliente encontrado.</td></tr>';
+                } else {
+                    data.clientes.forEach(cliente => {
+                        const linha = `<tr>
+                            <td>${cliente.codigo}</td>
+                            <td>${cliente.razao_social}</td>
+                            <td>${cliente.status}</td>
+                            <td>${cliente.regime}</td>
+                            <td>${cliente.segmento}</td>
+                        </tr>`;
+                        corpoTabela.innerHTML += linha;
+                    });
+                }
+            } catch (error) {
+                document.getElementById('corpo-tabela').innerHTML = '<tr><td colspan="5" style="text-align:center; color: red;">Erro ao carregar os dados.</td></tr>';
+                console.error('Erro:', error);
+            }
+        }
+        carregarDados();
+    </script>
+</body>
+</html>
