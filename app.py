@@ -1,13 +1,15 @@
 import os
 import json
-from flask import Flask
+from flask import Flask, render_template, jsonify
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from collections import Counter
 
 # --- CONFIGURAÇÃO ---
-app = Flask(__name__)
+# Adicionamos a pasta 'templates' para o Flask saber onde procurar o index.html
+app = Flask(__name__, template_folder='templates')
 
-# Função para autenticar (a mesma de antes, sem alterações)
+# Função para autenticar (a mesma de antes)
 def autenticar_google_sheets():
     scope = ["https://spreadsheets.google.com/feeds", 'https://www.googleapis.com/auth/spreadsheets',
              "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
@@ -17,56 +19,60 @@ def autenticar_google_sheets():
     client = gspread.authorize(creds)
     return client
 
-# --- NOVA ROTA: RELATÓRIO DO CLIENTE ---
-# Agora, o endereço vai incluir o código do cliente. Ex: /cliente/4
-@app.route("/cliente/<codigo_cliente>")
-def relatorio_cliente(codigo_cliente):
-    try:
-        # 1. Autentica no Google
-        client = autenticar_google_sheets()
+# --- ROTAS DA APLICAÇÃO ---
 
-        # 2. Abre a planilha "CONTROLE CENTRAL"
+# Rota principal: agora ela vai renderizar nossa página HTML
+@app.route("/")
+def dashboard():
+    # O Flask vai procurar por 'index.html' na pasta 'templates' e exibi-lo
+    return render_template('index.html')
+
+# Nova rota de API: ela vai fornecer todos os dados para o nosso frontend
+@app.route("/api/dados")
+def api_dados():
+    try:
+        client = autenticar_google_sheets()
         sheet = client.open("CONTROLE CENTRAL").sheet1
 
-        # 3. Encontra a linha que corresponde ao código do cliente
-        # O 'find' procura na primeira coluna (col=1) pelo código que recebemos
-        celula = sheet.find(codigo_cliente, in_column=1)
+        # Pega TODOS os registros da planilha, exceto o cabeçalho
+        todos_os_dados = sheet.get_all_records()
 
-        if celula is None:
-            return f"<h1>Cliente com código {codigo_cliente} não encontrado.</h1>"
-
-        # 4. Pega os dados da linha encontrada
-        linha_dados = sheet.row_values(celula.row)
+        # --- Processa os dados para os KPIs ---
+        total_clientes = len(todos_os_dados)
         
-        # Pega os dados específicos que queremos (lembre-se que a contagem começa em 0)
-        # Coluna A (Código) = linha_dados[0]
-        # Coluna B (Razão Social) = linha_dados[1]
-        # Coluna C (Status) = linha_dados[2]
-        # Coluna E (CNPJ) = linha_dados[4]
-        
-        razao_social = linha_dados[1]
-        status = linha_dados[2]
-        cnpj = linha_dados[4]
+        # Conta a frequência de cada item nas colunas de Status e Regime
+        contador_status = Counter(d['STATUS'] for d in todos_os_dados)
+        contador_regime = Counter(d['REGIME TRIBUTÁRIO'] for d in todos_os_dados)
 
-        # 5. Monta e exibe o relatório em HTML
-        html_relatorio = f"""
-        <h1>Relatório do Cliente</h1>
-        <p><strong>Código:</strong> {codigo_cliente}</p>
-        <p><strong>Razão Social:</strong> {razao_social}</p>
-        <p><strong>CNPJ:</strong> {cnpj}</p>
-        <p><strong>Status:</strong> {status}</p>
-        """
-        return html_relatorio
+        # --- Formata os dados para a tabela ---
+        clientes_formatados = []
+        for linha in todos_os_dados:
+            clientes_formatados.append({
+                "codigo": linha.get('CÓDIGO', ''),
+                "razao_social": linha.get('RAZÃO SOCIAL', ''),
+                "status": linha.get('STATUS', ''),
+                "regime": linha.get('REGIME TRIBUTÁRIO', ''),
+                "segmento": linha.get('SEGMENTO', '')
+            })
+        
+        # Monta o pacote de dados final
+        pacote_final = {
+            "kpis": {
+                "total_clientes": total_clientes,
+                "status": dict(contador_status),
+                "regime": dict(contador_regime)
+            },
+            "clientes": clientes_formatados
+        }
+
+        # Retorna os dados no formato JSON, que o JavaScript entende
+        return jsonify(pacote_final)
 
     except Exception as e:
-        return f"<h1>Ocorreu um erro:</h1><p>{e}</p>"
+        # Em caso de erro, retorna um JSON com a mensagem de erro
+        return jsonify({"erro": str(e)}), 500
 
-# Rota principal para dar uma instrução ao usuário
-@app.route("/")
-def index():
-    return "<h1>Serviço de Relatórios Ativo</h1><p>Para ver um relatório, acesse na URL: /cliente/SEU_CODIGO</p><p>Exemplo: /cliente/4</p>"
-
-# --- INICIA O SERVIDOR (Não precisa mexer aqui) ---
+# --- INICIA O SERVIDOR ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
